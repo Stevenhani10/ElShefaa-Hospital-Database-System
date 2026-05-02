@@ -2,7 +2,7 @@
 
 # 🏥 Hospital Management System Database
 
-### A normalized PostgreSQL database project designed from an ERD and implemented with tables, relationships, views, functions, procedures, indexes, seed data, security foundation, and validation queries.
+### A normalized PostgreSQL database project designed from an ERD and implemented with tables, relationships, views, functions, procedures, triggers, indexes, seed data, security foundation, and validation queries.
 
 ![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-336791?style=for-the-badge&logo=postgresql&logoColor=white)
 ![SQL](https://img.shields.io/badge/Language-SQL-025E8C?style=for-the-badge)
@@ -31,6 +31,7 @@ From a Senior DBA perspective, the project focuses on:
 - Views for reporting
 - Functions for reusable calculations
 - Stored procedures for controlled workflows
+- Triggers for automated business-rule enforcement and auditing
 - Indexes for performance optimization
 - Validation queries for ERD correctness
 - Security/access-control foundation
@@ -42,7 +43,7 @@ From a Senior DBA perspective, the project focuses on:
 > The ERD below is the source design used to build the relational database schema.
 
 <p align="center">
-  <img src="1.jpg" alt="Hospital Management System ERD" width="100%">
+  <img src="assets/hospital-erd.jpg" alt="Hospital Management System ERD" width="100%">
 </p>
 
 ### ERD Legend
@@ -136,14 +137,17 @@ hospital-management-system-db/
 ├── procedures/
 │   └── 05_procedures.sql
 │
+├── triggers/
+│   └── 06_triggers.sql
+│
 ├── indexes/
-│   └── 06_indexes.sql
+│   └── 07_indexes.sql
 │
 ├── security/
-│   └── 07_security.sql
+│   └── 08_security.sql
 │
 └── tests/
-    └── 08_validation_queries.sql
+    └── 09_validation_queries.sql
 ```
 
 ---
@@ -183,9 +187,10 @@ psql -U postgres -d hospital_management_system
 3. views/03_views.sql
 4. functions/04_functions.sql
 5. procedures/05_procedures.sql
-6. indexes/06_indexes.sql
-7. security/07_security.sql
-8. tests/08_validation_queries.sql
+6. triggers/06_triggers.sql
+7. indexes/07_indexes.sql
+8. security/08_security.sql
+9. tests/09_validation_queries.sql
 ```
 
 ### 4. Refresh Optimizer Statistics
@@ -210,6 +215,8 @@ ANALYZE;
 | Views | ✅ |
 | Functions | ✅ |
 | Stored Procedures | ✅ |
+| Triggers | ✅ |
+| Audit Tables | ✅ |
 | Indexes | ✅ |
 | Validation Queries | ✅ |
 | Access-Control Foundation | ✅ |
@@ -366,6 +373,249 @@ CALL sp_create_appointment(
     '12:00:00'
 );
 ```
+
+---
+
+
+# 🔁 Implemented Triggers
+
+Triggers were added to enforce automated business rules directly inside PostgreSQL. They run automatically when data is inserted, updated, or deleted, which makes the database safer and reduces dependency on application-side validation only.
+
+## Trigger Summary
+
+| Trigger | Table | Timing | Event | Purpose |
+|---|---|---|---|---|
+| `trg_calculate_employee_net_salary` | `employees` | BEFORE | INSERT / UPDATE | Automatically calculates employee net salary. |
+| `trg_calculate_bill_total_cost` | `bills` | BEFORE | INSERT / UPDATE | Automatically calculates bill total cost. |
+| `trg_prevent_doctor_double_booking` | `appointments` | BEFORE | INSERT / UPDATE | Prevents assigning the same doctor to two active appointments at the same date and time. |
+| `trg_prevent_clinic_double_booking` | `appointments` | BEFORE | INSERT / UPDATE | Prevents booking the same clinic room twice at the same date and time. |
+| `trg_prevent_negative_medicine_inventory` | `medicines_inventory` | BEFORE | INSERT / UPDATE | Prevents medicine inventory quantity from becoming negative. |
+| `trg_prevent_expired_medicine_prescription` | `prescriptions` | BEFORE | INSERT / UPDATE | Prevents prescribing expired medicine. |
+| `trg_prevent_visit_before_appointment` | `visits` | BEFORE | INSERT / UPDATE | Prevents creating a visit before its related appointment date. |
+| `trg_audit_employee_salary_changes` | `employees` | AFTER | UPDATE | Records salary changes in an audit table. |
+| `trg_audit_payment_status_changes` | `payments` | AFTER | UPDATE | Records payment status changes in an audit table. |
+| `trg_prevent_patient_delete_with_history` | `patients` | BEFORE | DELETE | Prevents deleting patients who already have medical or financial history. |
+
+## Trigger Categories
+
+| Category | Implemented Logic |
+|---|---|
+| Automatic Calculations | Calculates employee net salary and bill total cost automatically. |
+| Appointment Validation | Prevents doctor and clinic double booking. |
+| Inventory Protection | Prevents negative medicine inventory quantities. |
+| Medicine Safety | Prevents prescribing expired medicine. |
+| Visit Validation | Prevents visits from being created before the appointment date. |
+| Auditing | Tracks salary changes and payment status changes. |
+| Delete Protection | Protects patient medical and financial history from accidental deletion. |
+
+## Business Rules Enforced by Triggers
+
+### Salary Calculation
+
+```text
+fixed_salary + bonus - deduction = net_salary
+```
+
+The employee net salary is calculated automatically before inserting or updating employee salary fields.
+
+### Bill Total Calculation
+
+```text
+actual_cost + transfer_fees = total_cost
+```
+
+The bill total is calculated automatically before inserting or updating bill cost fields.
+
+### Doctor Double Booking Prevention
+
+```text
+One doctor cannot have two active appointments at the same date and time.
+```
+
+This protects appointment scheduling and supports the doctor availability logic.
+
+### Clinic Double Booking Prevention
+
+```text
+One clinic room cannot be booked twice at the same date and time.
+```
+
+This protects clinic and room scheduling.
+
+### Medicine Inventory Protection
+
+```text
+Medicine inventory quantity cannot be less than zero.
+```
+
+This prevents invalid stock levels and supports reliable pharmacy inventory management.
+
+### Expired Medicine Prescription Prevention
+
+```text
+Expired medicine cannot be prescribed to patients.
+```
+
+This adds a patient-safety rule directly inside the database.
+
+### Patient Delete Protection
+
+```text
+Patients with visits, diagnoses, prescriptions, bills, or payments cannot be deleted.
+```
+
+This protects critical medical and financial records from accidental loss.
+
+## Audit Tables
+
+| Audit Table | Purpose |
+|---|---|
+| `employee_salary_audit` | Stores old and new salary values when employee salary data changes. |
+| `payment_status_audit` | Stores old and new payment statuses when payment status changes. |
+
+Audit records include the related record ID, previous value, new value, database user, and timestamp.
+
+## Trigger Test Examples
+
+### Test Employee Net Salary Trigger
+
+```sql
+UPDATE employees
+SET fixed_salary = 40000,
+    bonus = 5000,
+    deduction = 2000
+WHERE employee_id = 1;
+
+SELECT
+    employee_id,
+    full_name,
+    fixed_salary,
+    bonus,
+    deduction,
+    net_salary
+FROM employees
+WHERE employee_id = 1;
+```
+
+Expected result:
+
+```text
+net_salary = 43000
+```
+
+### Test Bill Total Cost Trigger
+
+```sql
+INSERT INTO bills (
+    patient_id,
+    visit_id,
+    payment_id,
+    bill_type,
+    service_name,
+    actual_cost,
+    transfer_fees,
+    description
+)
+VALUES (
+    1,
+    2,
+    NULL,
+    'Test',
+    'Blood Test',
+    800,
+    50,
+    'Blood test bill'
+);
+
+SELECT
+    bill_id,
+    service_name,
+    actual_cost,
+    transfer_fees,
+    total_cost
+FROM bills
+WHERE service_name = 'Blood Test';
+```
+
+Expected result:
+
+```text
+total_cost = 850
+```
+
+### Test Doctor Double Booking Trigger
+
+```sql
+INSERT INTO appointments (
+    patient_id,
+    clinic_id,
+    doctor_id,
+    appointment_date,
+    appointment_time,
+    appointment_status
+)
+VALUES (
+    2,
+    1,
+    1,
+    '2026-05-05',
+    '10:00:00',
+    'Scheduled'
+);
+```
+
+Expected result:
+
+```text
+ERROR: Doctor already has an appointment at this date and time.
+```
+
+### Test Negative Medicine Inventory Trigger
+
+```sql
+UPDATE medicines_inventory
+SET quantity = -5
+WHERE store_id = 2
+  AND medicine_id = 1;
+```
+
+Expected result:
+
+```text
+ERROR: Medicine inventory quantity cannot be negative.
+```
+
+### Test Payment Status Audit Trigger
+
+```sql
+UPDATE payments
+SET payment_status = 'Paid'
+WHERE payment_id = 3;
+
+SELECT *
+FROM payment_status_audit
+WHERE payment_id = 3
+ORDER BY changed_at DESC;
+```
+
+Expected result:
+
+```text
+A new audit record showing the old payment status and the new payment status.
+```
+
+## DBA Value of Triggers
+
+| Area | Value |
+|---|---|
+| Data Accuracy | Automatically calculates salary and billing totals. |
+| Scheduling Integrity | Prevents doctor and clinic double booking. |
+| Patient Safety | Blocks expired medicine prescriptions. |
+| Inventory Accuracy | Prevents negative medicine stock. |
+| Auditability | Tracks sensitive salary and payment status changes. |
+| Record Protection | Prevents deletion of patients with historical records. |
+
+From a Senior DBA perspective, the trigger layer strengthens the project because core business rules are enforced inside the database engine itself, not only in external application code.
 
 ---
 
@@ -693,8 +943,69 @@ FROM vw_medicine_inventory;
 
 ---
 
+# 🧠 Senior DBA Design Notes
 
+## Why Junction Tables Were Used
 
+Junction tables were used because several hospital relationships are naturally many-to-many. This avoids repeating values in a single column and prevents update anomalies.
+
+## Why Patient Medical History Was Separated
+
+Patient medical history contains structured data, not just free text. Diagnoses, prescriptions, surgeries, visits, doctors, dates, and notes were separated into related tables to support accurate reporting and querying.
+
+## Why Views Were Added
+
+Views simplify reporting and reduce repeated joins. They make the database easier to query for users who do not need to know the full physical schema.
+
+## Why Functions Were Added
+
+Functions encapsulate repeated calculations such as salary, balance, doctor availability, and expiry status. This improves consistency and maintainability.
+
+## Why Stored Procedures Were Added
+
+Stored procedures enforce controlled workflows that affect multiple tables, such as completing appointments, prescribing medicines, reducing inventory, and creating bills with payments.
+
+## Why Indexes Were Added
+
+Indexes were added on high-usage columns involved in filtering, searching, joining, scheduling, billing, and medical-history retrieval.
+
+---
+
+# ⚠️ Limitations and Future Improvements
+
+This project is strong for academic, training, and prototype usage. For a real production hospital system, the following improvements are recommended:
+
+- Full authentication system
+- Password hashing and secure identity management
+- Audit trails for sensitive operations
+- Row-level security
+- Medical staff license validation
+- Appointment duration and time-range conflict detection
+- Insurance provider integration
+- Laboratory module
+- Radiology module
+- Emergency department module
+- Inpatient admission module
+- Medication dispensing transactions
+- Stock movement logs
+- Purchase orders
+- Advanced accounting module
+- Data encryption strategy
+- Backup and recovery strategy
+- High availability and disaster recovery
+- Compliance controls depending on jurisdiction
+
+---
+
+# ✅ Senior DBA Verdict
+
+This project demonstrates a complete transformation from ERD to relational database implementation. The schema separates core hospital entities correctly, resolves many-to-many relationships through junction tables, enforces referential integrity, and supports real hospital workflows.
+
+The implementation goes beyond table creation by including seed data, views, functions, stored procedures, indexes, access-control foundation, and validation queries. From a database administration perspective, the design is normalized, testable, maintainable, and extendable.
+
+It provides a strong foundation for a future hospital management application and can be expanded with stronger security, auditing, reporting, and production-grade operational controls.
+
+---
 
 <div align="center">
 
