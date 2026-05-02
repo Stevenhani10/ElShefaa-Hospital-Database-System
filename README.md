@@ -43,7 +43,7 @@ From a Senior DBA perspective, the project focuses on:
 > The ERD below is the source design used to build the relational database schema.
 
 <p align="center">
-  <img src="assets/hospital-erd.jpg" alt="Hospital Management System ERD" width="100%">
+  <img src="1.jpg" alt="Hospital Management System ERD" width="100%">
 </p>
 
 ### ERD Legend
